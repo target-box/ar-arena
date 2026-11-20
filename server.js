@@ -161,3 +161,5 @@ setInterval(() => {
 }, 30000);
 
 server.listen(PORT, () => console.log('AR Arena listening on port ' + PORT));
+
+require('./duel')(wss); // Wild West duel
