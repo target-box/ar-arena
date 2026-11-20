@@ -1,0 +1,1 @@
+services: [{type: web, name: ar-arena, runtime: node, plan: free, buildCommand: "npm install", startCommand: "npm start"}]
