@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+  <html lang="bg">
+  <head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+  <meta name="theme-color" content="#000000">
+  <title>AR Arena</title>
+  <style>
+    *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;user-select:none;-webkit-user-select:none;touch-action:none}
+  html,body{margin:0;height:100%;background:#000;color:#fff;font-family:system-ui,-apple-system,Roboto,sans-serif;overflow:hidden}
+  #cam{position:fixed;inset:0;width:100%;height:100%;object-fit:cover;background:radial-gradient(circle at 50% 40%,#1b2a3a,#05080c)}
+  #cv{position:fixed;inset:0;width:100%;height:100%}
+  .panel{position:fixed;background:rgba(20,20,20,.72);border-radius:12px;padding:8px 12px;font-size:14px;line-height:1.35;backdrop-filter:blur(4px)}
+  #info{top:max(10px,env(safe-area-inset-top));right:10px;text-align:right;min-width:150px}
+  #info b{font-size:16px}
+  #hpbar{height:8px;background:#444;border-radius:4px;margin-top:5px;overflow:hidden}
+  #hpfill{height:100%;width:100%;background:linear-gradient(90deg,#ff3b3b,#3bff7a)}
+  #stats{right:10px;bottom:calc(96px + env(safe-area-inset-bottom));width:160px}
+  #stats h4{margin:0 0 4px;text-align:center;letter-spacing:2px}
+  #stats div{display:flex;justify-content:space-between}
+  .k{color:#6f6}.d{color:#f66}.r{color:#ff5}
+    #feed{top:max(10px,env(safe-area-inset-top));left:10px;font-size:13px;max-width:55%;background:none;padding:0;backdrop-filter:none}
+    #feed div{background:rgba(20,20,20,.65);border-radius:8px;padding:3px 8px;margin-bottom:4px;width:fit-content}
+    #fire{position:fixed;right:18px;bottom:calc(18px + env(safe-area-inset-bottom));width:84px;height:84px;border-radius:50%;
+          border:3px solid #fff;background:rgba(255,40,70,.75);font-weight:800;font-size:15px;color:#fff;letter-spacing:1px}
+  #fire:active{background:rgba(255,120,140,.95);transform:scale(.95)}
+  #status{left:10px;bottom:calc(200px + env(safe-area-inset-bottom));font-size:12px;opacity:.9}
+  #flash{position:fixed;inset:0;pointer-events:none;background:radial-gradient(transparent 40%,rgba(255,0,0,.75));opacity:0;transition:opacity .35s}
+  #dead{position:fixed;inset:0;display:none;align-items:center;justify-content:center;flex-direction:column;background:rgba(120,0,0,.45);font-size:26px;font-weight:700;text-align:center}
+  #lobby{position:fixed;inset:0;background:linear-gradient(160deg,#0a1420,#1a0f2a);display:flex;align-items:center;justify-content:center;z-index:10;padding:20px}
+  #lobby .box{width:100%;max-width:360px;text-align:center}
+  #lobby h1{margin:0 0 4px;font-size:34px;letter-spacing:3px}
+  #lobby p{opacity:.75;margin:0 0 18px;font-size:14px}
+  #lobby input{width:100%;padding:14px;margin-bottom:10px;border-radius:10px;border:1px solid #456;background:#0b1118;color:#fff;font-size:17px;user-select:text;-webkit-user-select:text;touch-action:auto}
+  #lobby button{width:100%;padding:16px;border-radius:10px;border:0;background:#ff2d55;color:#fff;font-size:18px;font-weight:700}
+  #err{color:#ff8a8a;margin-top:10px;font-size:13px;min-height:18px}
+</style>
+    </head>
+    <body>
+    <video id="cam" playsinline autoplay muted></video>
+<canvas id="cv"></canvas>
+<div id="flash"></div>
+
+<div id="feed" class="panel"></div>
+    <div id="info" class="panel"><b id="pname">—</b> <span id="php">100 HP</span><div id="hpbar"><div id="hpfill"></div></div><div id="pstat" style="font-size:12px;opacity:.85;margin-top:3px"></div></div>
+    <div id="stats" class="panel"><h4>STATS</h4>
+      <div><span>Фрагове:</span><span class="k" id="sk">0</span></div>
+      <div><span>Смъртни:</span><span class="d" id="sd">0</span></div>
+      <div><span>K/D:</span><span class="r" id="skd">0</span></div>
+      <div><span>Мишени:</span><span class="r" id="st">0</span></div>
+    </div>
+    <div id="status" class="panel"></div>
+    <button id="fire">ОГЪН</button>
+    <div id="dead"><div>ЕЛИМИНИРАН</div><div id="respawn" style="font-size:18px;font-weight:400;margin-top:8px"></div></div>
+
+    <div id="lobby"><div class="box">
+      <h1>AR ARENA</h1>
+      <p>Стреляй по мишени и по други играчи през камерата на телефона.</p>
+      <input id="name" maxlength="16" placeholder="Твоето име" autocomplete="off">
+      <input id="room" maxlength="8" placeholder="Код на стая (напр. MAIN)" autocomplete="off" value="MAIN">
+      <button id="go">СТАРТ</button>
+      <div id="err"></div>
+    </div></div>
+
+    <script>
+    'use strict';
+const $ = (id) => document.getElementById(id);
+const rad = (d) => d * Math.PI / 180;
+const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+const vfov = 60, TAU = Math.PI * 2;
+
+const video = $('cam'), cv = $('cv'), ctx = cv.getContext('2d');
+let W = 0, H = 0, FOC = 700;
+function resize() {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  W = innerWidth; H = innerHeight;
+  cv.width = W * dpr; cv.height = H * dpr;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  FOC = (H / 2) / Math.tan(rad(vfov / 2));
+}
+addEventListener('resize', resize); resize();
+
+let ws = null, myId = null, players = [], me = null;
+let sensor = { ok: false, a: 0, b: 0, g: 0, offset: 0, targetOffset: null, absolute: false };
+let manual = { yaw: 0, pitch: 0 };
+let gpsMode = 'waiting';
+let targetsHit = 0;
+const targets = [];
+const particles = [];
+const tracers = {};
+let hitMarker = 0, muzzle = 0, lastShotAt = 0;
+
+async function startCamera() {
+  try {
+    const s = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } }, audio: false });
+    video.srcObject = s; await video.play().catch(() => {});
+    return true;
+  } catch (e) { return false; }
+}
+
+function onOrient(e) {
+    if (e.alpha == null || e.beta == null) return;
+  const abs = e.type === 'deviceorientationabsolute' || e.absolute === true;
+  if (sensor.absolute && !abs && e.webkitCompassHeading == null) return;
+  if (abs) sensor.absolute = true;
+  sensor.ok = true; sensor.a = e.alpha; sensor.b = e.beta; sensor.g = e.gamma || 0;
+  if (typeof e.webkitCompassHeading === 'number') {
+    const v = rawVectors();
+    if (Math.abs(v.f[2]) < 0.85) {
+      const hRaw = Math.atan2(v.f[0], v.f[1]) * 180 / Math.PI;
+      let off = e.webkitCompassHeading - hRaw;
+      off = ((off + 540) % 360) - 180;
+      if (sensor.targetOffset == null) sensor.offset = off;
+      else { let d = ((off - sensor.offset + 540) % 360) - 180; sensor.offset += d * 0.1; }
+      sensor.targetOffset = off;
+    }
+  }
+}
+
+async function startSensors() {
+  try {
+    if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+      const r = await DeviceOrientationEvent.requestPermission();
+      if (r !== 'granted') return false;
+}
+} catch (e) { return false; }
+  window.addEventListener('deviceorientationabsolute', onOrient, true);
+  window.addEventListener('deviceorientation', onOrient, true);
+  return true;
+}
+
+function startGPS() {
+  if (!navigator.geolocation) { gpsMode = 'virtual'; return; }
+  let last = 0;
+  navigator.geolocation.watchPosition((p) => {
+    gpsMode = 'gps';
+    const now = Date.now();
+    if (now - last < 800) return; last = now;
+    send({ t: 'pos', lat: p.coords.latitude, lon: p.coords.longitude });
+}, () => { gpsMode = 'virtual'; }, { enableHighAccuracy: true, maximumAge: 1000, timeout: 15000 });
+}
+
+function rawVectors() {
+  const a = rad(sensor.a), b = rad(sensor.b), g = rad(sensor.g);
+  const cA = Math.cos(a), sA = Math.sin(a), cB = Math.cos(b), sB = Math.sin(b), cG = Math.cos(g), sG = Math.sin(g);
+  return {
+    r: [cA * cG - sA * sB * sG, cG * sA + cA * sB * sG, -cB * sG],
+    u: [-cB * sA, cA * cB, sB],
+    f: [-(cG * sA * sB + cA * sG), -(sA * sG - cA * cG * sB), -(cB * cG)],
+};
+}
+function camVectors() {
+  if (sensor.ok) {
+    const v = rawVectors();
+    const t = rad(sensor.offset), c = Math.cos(t), s = Math.sin(t);
+    const rot = (p) => [p[0] * c + p[1] * s, -p[0] * s + p[1] * c, p[2]];
+    return { r: rot(v.r), u: rot(v.u), f: rot(v.f) };
+           }
+  const sy = Math.sin(manual.yaw), cy = Math.cos(manual.yaw), sp = Math.sin(manual.pitch), cp = Math.cos(manual.pitch);
+  return { r: [cy, -sy, 0], u: [-sy * sp, -cy * sp, cp], f: [sy * cp, cy * cp, sp] };
+}
+
+let cam = camVectors();
+function project(d) {
+  const cz = dot(d, cam.f);
+  return { cz, x: W / 2 + FOC * dot(d, cam.r) / cz, y: H / 2 - FOC * dot(d, cam.u) / cz };
+}
+
+function connect() {
+  ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host);
+  ws.onopen = () => send({ t: 'join', name: $('name').value.trim(), room: $('room').value.trim() });
+  ws.onmessage = (ev) => {
+    let m; try { m = JSON.parse(ev.data); } catch { return; }
+    if (m.t === 'welcome') { myId = m.id; $('status').dataset.room = m.room; }
+    else if (m.t === 'state') { players = m.players; me = players.find((p) => p.id === myId) || me; updateHud(); }
+    else if (m.t === 'shot') { tracers[m.id] = performance.now(); }
+    else if (m.t === 'hit') {
+      if (m.by === myId) { hitMarker = performance.now(); beep(880, 0.06); }
+      if (m.target === myId) { $('flash').style.opacity = 1; setTimeout(() => $('flash').style.opacity = 0, 150); navigator.vibrate && navigator.vibrate(m.killed ? [200, 80, 200] : 120); }
+      if (m.killed) feed(`${m.byName} ➜ ${m.targetName}`);
+}
+    else if (m.t === 'error') { alert(m.msg); }
+};
+  ws.onclose = () => { $('status').textContent = 'Връзката прекъсна – презареди страницата'; };
+}
+function send(o) { if (ws && ws.readyState === 1) ws.send(JSON.stringify(o)); }
+
+function feed(text) {
+  const d = document.createElement('div'); d.textContent = text; $('feed').appendChild(d);
+  setTimeout(() => d.remove(), 5000);
+}
+
+function updateHud() {
+  if (!me) return;
+  $('pname').textContent = me.name; $('php').textContent = `(${me.hp} HP)`;
+  $('hpfill').style.width = me.hp + '%';
+  $('pstat').textContent = 'GPS: ' + (gpsMode === 'gps' ? 'активен' : gpsMode === 'virtual' ? 'виртуален режим' : 'чакане…') + ' · играчи: ' + players.length;
+  $('sk').textContent = me.score; $('sd').textContent = me.deaths;
+  $('skd').textContent = me.deaths ? (me.score / me.deaths).toFixed(1) : me.score;
+  $('st').textContent = targetsHit;
+  $('dead').style.display = me.dead ? 'flex' : 'none';
+  $('status').textContent = (sensor.ok ? (sensor.absolute || sensor.targetOffset != null ? 'Компас ✓' : 'Компас: относителен') : 'Без сензори (влачи за оглед)') + ' · стая ' + ($('status').dataset.room || '');
+}
+
+function spawnTarget() {
+  const yaw = Math.random() * TAU, el = rad(-8 + Math.random() * 40), d = 5 + Math.random() * 6;
+  targets.push({ yaw, el, d, spin: (Math.random() - 0.5) * 0.4, born: performance.now(), phase: Math.random() * 6 });
+}
+function tPos(t, now) {
+  const yaw = t.yaw + t.spin * (now - t.born) / 1000, el = t.el + Math.sin(now / 900 + t.phase) * 0.05;
+  return [t.d * Math.cos(el) * Math.sin(yaw), t.d * Math.cos(el) * Math.cos(yaw), t.d * Math.sin(el), yaw];
+}
+for (let i = 0; i < 6; i++) spawnTarget();
+
+function fire() {
+  const now = performance.now();
+  if (now - lastShotAt < 220 || (me && me.dead)) return;
+  lastShotAt = now; muzzle = now; beep(220, 0.08, 'sawtooth');
+  const f = cam.f;
+  send({ t: 'shoot', yaw: Math.atan2(f[0], f[1]), pitch: Math.asin(Math.max(-1, Math.min(1, f[2]))) });
+  let best = null, bestA = Infinity;
+  for (const t of targets) {
+    const p = tPos(t, now), L = Math.hypot(p[0], p[1], p[2]);
+    const ang = Math.acos(Math.max(-1, Math.min(1, dot(f, p) / L)));
+    if (ang < Math.max(Math.atan(0.6 / L), rad(3)) && ang < bestA) { best = t; bestA = ang; }
+}
+  if (best) {
+    const p = tPos(best, now); targets.splice(targets.indexOf(best), 1);
+    for (let i = 0; i < 24; i++) particles.push({ p: [p[0], p[1], p[2]], v: [(Math.random() - .5) * 6, (Math.random() - .5) * 6, (Math.random() - .5) * 6], life: 1 });
+    targetsHit++; hitMarker = now; beep(660, 0.1); setTimeout(spawnTarget, 800); updateHud();
+}
+}
+
+let actx = null;
+function beep(freq, dur, type = 'square') {
+  try {
+    actx = actx || new (window.AudioContext || window.webkitAudioContext)();
+    const o = actx.createOscillator(), g = actx.createGain();
+    o.type = type; o.frequency.value = freq; g.gain.value = 0.06;
+    g.gain.exponentialRampToValueAtTime(0.0001, actx.currentTime + dur);
+    o.connect(g).connect(actx.destination); o.start(); o.stop(actx.currentTime + dur);
+} catch (e) {}
+  if (navigator.vibrate && type === 'sawtooth') navigator.vibrate(25);
+}
+
+function drawTarget(x, y, r, now) {
+  const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+  g.addColorStop(0, 'rgba(255,255,255,.95)'); g.addColorStop(.4, 'rgba(255,200,40,.9)'); g.addColorStop(1, 'rgba(255,80,0,.35)');
+  ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, r, 0, TAU); ctx.fill();
+  ctx.strokeStyle = '#fff'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.arc(x, y, r * 0.65, 0, TAU); ctx.stroke();
+  ctx.beginPath(); ctx.arc(x, y, r * 1.25, now / 400 % TAU, now / 400 % TAU + 4); ctx.stroke();
+}
+
+function drawPlayer(p, now) {
+  const d = [p.x - me.x, p.y - me.y, 0], D = Math.max(Math.hypot(d[0], d[1]), 0.5);
+  const top = project([d[0], d[1], 0.2]), bot = project([d[0], d[1], -1.5]);
+  if (top.cz <= 0.1) {
+    const side = dot(d, cam.r) >= 0 ? 1 : -1;
+    ctx.fillStyle = p.color; ctx.beginPath();
+    const ex = W / 2 + side * (W / 2 - 18), ey = H / 2;
+    ctx.moveTo(ex, ey - 14); ctx.lineTo(ex - side * 18, ey); ctx.lineTo(ex, ey + 14); ctx.fill();
+    return;
+  }
+  const h = Math.abs(bot.y - top.y), w = h * 0.38, cx = top.x, cy = (top.y + bot.y) / 2;
+  ctx.save();
+  ctx.globalAlpha = p.dead ? 0.25 : 0.9;
+  ctx.strokeStyle = p.color; ctx.fillStyle = p.color + '55'; ctx.lineWidth = 3;
+  ctx.beginPath();
+  if (ctx.roundRect) ctx.roundRect(cx - w / 2, cy - h / 2, w, h, w / 2); else ctx.rect(cx - w / 2, cy - h / 2, w, h);
+  ctx.fill(); ctx.stroke();
+  ctx.beginPath(); ctx.arc(cx, cy - h / 2 + w * 0.35, w * 0.3, 0, TAU); ctx.fillStyle = p.color; ctx.fill();
+  if (now - (tracers[p.id] || 0) < 150) { ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(cx, cy, w * 0.5, 0, TAU); ctx.fill(); }
+  ctx.restore();
+  ctx.textAlign = 'center'; ctx.font = '600 14px system-ui'; ctx.fillStyle = '#fff'; ctx.strokeStyle = '#000'; ctx.lineWidth = 3;
+  const label = `${p.name} · ${Math.round(D)}м`;
+  ctx.strokeText(label, cx, cy - h / 2 - 16); ctx.fillText(label, cx, cy - h / 2 - 16);
+  ctx.fillStyle = '#333'; ctx.fillRect(cx - 24, cy - h / 2 - 10, 48, 5);
+  ctx.fillStyle = '#4f4'; ctx.fillRect(cx - 24, cy - h / 2 - 10, 48 * p.hp / 100, 5);
+  }
+
+function onTarget() {
+  const f = cam.f, now = performance.now();
+  for (const t of targets) {
+    const p = tPos(t, now), L = Math.hypot(p[0], p[1], p[2]);
+    if (Math.acos(Math.max(-1, Math.min(1, dot(f, p) / L))) < Math.max(Math.atan(0.6 / L), rad(3))) return true;
+}
+  if (me) for (const p of players) {
+    if (p.id === myId || p.dead) continue;
+    const dx = p.x - me.x, dy = p.y - me.y, D = Math.max(Math.hypot(dx, dy), 0.5);
+    const yaw = Math.atan2(f[0], f[1]); let dh = Math.atan2(dx, dy) - yaw; dh = Math.atan2(Math.sin(dh), Math.cos(dh));
+    if (Math.abs(dh) < Math.max(Math.atan(0.8 / D), rad(6)) && Math.abs(Math.asin(f[2]) - Math.atan2(-0.3, D)) < Math.max(Math.atan(0.9 / D), rad(6))) return true;
+}
+  return false;
+}
+
+function drawCrosshair(now) {
+  const cx = W / 2, cy = H / 2, hot = onTarget();
+  const col = hot ? '#ff2d2d' : '#ffffff';
+  ctx.save(); ctx.lineWidth = 2.5; ctx.strokeStyle = col; ctx.shadowColor = '#000'; ctx.shadowBlur = 4;
+  const kick = now - muzzle < 100 ? 6 : 0, r = 24 + kick;
+  ctx.beginPath(); ctx.arc(cx, cy, r, 0, TAU); ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(cx - r - 14, cy); ctx.lineTo(cx - r + 8, cy); ctx.moveTo(cx + r - 8, cy); ctx.lineTo(cx + r + 14, cy);
+  ctx.moveTo(cx, cy - r - 14); ctx.lineTo(cx, cy - r + 8); ctx.moveTo(cx, cy + r - 8); ctx.lineTo(cx, cy + r + 14);
+  ctx.stroke();
+  ctx.fillStyle = col; ctx.beginPath(); ctx.arc(cx, cy, 2.2, 0, TAU); ctx.fill();
+  if (now - hitMarker < 180) {
+    ctx.strokeStyle = '#ff3030'; ctx.lineWidth = 3.5;
+    ctx.beginPath();
+    for (const [sx, sy] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) { ctx.moveTo(cx + sx * 10, cy + sy * 10); ctx.lineTo(cx + sx * 22, cy + sy * 22); }
+          ctx.stroke();
+    }
+  ctx.restore();
+}
+
+function drawRadar(now) {
+  const R = 72, cx = 16 + R, cy = H - R - 16 - (innerHeight - document.documentElement.clientHeight) - 8, RANGE = 25;
+  const heading = Math.atan2(cam.f[0], cam.f[1]);
+  ctx.save();
+  ctx.beginPath(); ctx.arc(cx, cy, R, 0, TAU); ctx.fillStyle = 'rgba(15,35,50,.72)'; ctx.fill();
+  ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(255,255,255,.9)'; ctx.stroke();
+  ctx.lineWidth = 1; ctx.strokeStyle = 'rgba(255,255,255,.35)';
+  ctx.beginPath(); ctx.arc(cx, cy, R * 0.5, 0, TAU); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(cx - R, cy); ctx.lineTo(cx + R, cy); ctx.moveTo(cx, cy - R); ctx.lineTo(cx, cy + R); ctx.stroke();
+  ctx.fillStyle = 'rgba(255,255,255,.14)';
+  const half = rad(vfov * (W / H) / 2 + 8);
+  ctx.beginPath(); ctx.moveTo(cx, cy); ctx.arc(cx, cy, R, -Math.PI / 2 - half, -Math.PI / 2 + half); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = '#ff6'; ctx.font = '700 12px system-ui'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText('N', cx + Math.sin(-heading) * (R - 9), cy - Math.cos(-heading) * (R - 9));
+  ctx.beginPath(); ctx.arc(cx, cy, R - 2, 0, TAU); ctx.clip();
+  const put = (dx, dy, color, size, square) => {
+    const c = Math.cos(heading), s = Math.sin(heading);
+    let rx = dx * c - dy * s, ry = dx * s + dy * c;
+    const L = Math.hypot(rx, ry), maxL = RANGE;
+    if (L > maxL) { rx *= maxL / L; ry *= maxL / L; }
+    const px = cx + rx / RANGE * (R - 6), py = cy - ry / RANGE * (R - 6);
+    ctx.fillStyle = color; ctx.beginPath();
+    if (square) ctx.rect(px - size, py - size, size * 2, size * 2); else ctx.arc(px, py, size, 0, TAU);
+    ctx.fill();
+};
+  for (const t of targets) { const p = tPos(t, now); put(p[0], p[1], '#ffc82e', 3, true); }
+  if (me) for (const p of players) if (p.id !== myId && !p.dead) put(p.x - me.x, p.y - me.y, p.color, 5, false);
+  ctx.fillStyle = '#6f4'; ctx.beginPath(); ctx.arc(cx, cy, 6, 0, TAU); ctx.fill();
+  ctx.restore();
+}
+
+function frame() {
+  const now = performance.now();
+  cam = camVectors();
+  ctx.clearRect(0, 0, W, H);
+  if (me) {
+    for (const t of targets) {
+      const p = tPos(t, now), pr = project(p);
+      if (pr.cz > 0.1) drawTarget(pr.x, pr.y, Math.max(FOC * 0.5 / pr.cz, 6), now);
+}
+    for (const p of players) if (p.id !== myId) drawPlayer(p, now);
+    for (let i = particles.length - 1; i >= 0; i--) {
+      const q = particles[i]; q.life -= 0.03;
+      if (q.life <= 0) { particles.splice(i, 1); continue; }
+      for (let k = 0; k < 3; k++) q.p[k] += q.v[k] * 0.03;
+      const pr = project(q.p);
+      if (pr.cz > 0.1) { ctx.fillStyle = `rgba(255,${Math.round(150 * q.life)},40,${q.life})`; ctx.beginPath(); ctx.arc(pr.x, pr.y, 3 + 5 * q.life, 0, TAU); ctx.fill(); }
+}
+    drawCrosshair(now);
+    drawRadar(now);
+    if (me.dead) $('respawn').textContent = 'Връщаш се скоро…';
+}
+  requestAnimationFrame(frame);
+}
+
+$('fire').addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); fire(); });
+let drag = null;
+cv.addEventListener('pointerdown', (e) => { if (sensor.ok) fire(); else drag = { x: e.clientX, y: e.clientY }; });
+cv.addEventListener('pointermove', (e) => {
+  if (!drag) return;
+  manual.yaw += (e.clientX - drag.x) * 0.005;
+  manual.pitch = Math.max(-1.4, Math.min(1.4, manual.pitch - (e.clientY - drag.y) * 0.005));
+  drag = { x: e.clientX, y: e.clientY };
+});
+addEventListener('pointerup', () => { drag = null; });
+addEventListener('keydown', (e) => { if (e.code === 'Space') fire(); });
+
+$('go').addEventListener('click', async () => {
+  $('go').disabled = true; $('err').textContent = '';
+  const camOk = await startCamera();
+  await startSensors();
+  startGPS();
+  if (!camOk) $('err').textContent = 'Камерата не е достъпна – играем без нея.';
+  $('lobby').style.display = 'none';
+  connect();
+  requestAnimationFrame(frame);
+});
+</script>
+</body>
+</html>
