@@ -1,0 +1,465 @@
+<!DOCTYPE html>
+<html lang="bg">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="theme-color" content="#10202f">
+<title>Лов на съкровища</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%;overflow:hidden;background:#10202f;color:#fff;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;touch-action:manipulation}
+#map{position:fixed;inset:0;z-index:1;background:#1b2b3a}
+.leaflet-container{font:inherit}
+#hud{position:fixed;top:0;left:0;right:0;z-index:500;padding:calc(8px + env(safe-area-inset-top)) 10px 0;display:flex;gap:8px;pointer-events:none}
+.chip{background:rgba(16,32,47,.88);border:1px solid rgba(255,255,255,.18);border-radius:12px;padding:7px 11px;font-size:14px;font-weight:700;backdrop-filter:blur(4px)}
+.chip small{display:block;font-size:10px;font-weight:400;opacity:.7;letter-spacing:1px}
+#gps{margin-left:auto;text-align:right}
+#bottom{position:fixed;left:0;right:0;bottom:0;z-index:500;padding:10px 12px calc(12px + env(safe-area-inset-bottom));background:linear-gradient(transparent,rgba(16,32,47,.95) 35%)}
+#near{font-size:14px;text-align:center;margin-bottom:8px;text-shadow:0 1px 3px #000}
+button{font:inherit;border:0;color:#fff;cursor:pointer}
+.btn{width:100%;padding:15px;border-radius:14px;font-size:18px;font-weight:800;letter-spacing:.5px;background:#2b3f52;color:#cfe}
+.btn.go{background:linear-gradient(135deg,#ffb300,#ff6d00);color:#2a1500;box-shadow:0 0 22px rgba(255,160,0,.55);animation:pulse 1.2s infinite}
+@keyframes pulse{50%{transform:scale(1.025)}}
+.side{position:fixed;right:10px;z-index:500;display:flex;flex-direction:column;gap:8px}
+.round{width:46px;height:46px;border-radius:50%;background:rgba(16,32,47,.9);border:1px solid rgba(255,255,255,.25);font-size:20px}
+#top5{position:fixed;left:10px;right:10px;top:calc(64px + env(safe-area-inset-top));z-index:600;display:none;background:rgba(16,32,47,.95);border:1px solid rgba(255,255,255,.2);border-radius:14px;padding:12px}
+#top5 h3{margin:0 0 6px;font-size:15px}#top5 div{font-size:14px;padding:3px 0;display:flex;justify-content:space-between}
+#prize{margin-top:8px;padding:8px;border-radius:10px;background:#1f4d2b;font-size:13px}
+.ch{font-size:26px;line-height:1;text-align:center;filter:drop-shadow(0 2px 3px rgba(0,0,0,.7))}
+.ch.gold{filter:drop-shadow(0 0 8px #ffd23b)}
+.ch.near{animation:pulse .8s infinite}
+.me{width:18px;height:18px;border-radius:50%;background:#3b9bff;border:3px solid #fff;box-shadow:0 0 0 6px rgba(59,155,255,.3)}
+.pl{width:14px;height:14px;border-radius:50%;border:2px solid #fff}
+.pn{position:absolute;left:12px;top:-4px;white-space:nowrap;font-size:11px;font-weight:700;color:#fff;text-shadow:0 1px 2px #000,0 0 4px #000}
+/* camera */
+#cam{position:fixed;inset:0;z-index:800;background:#000;display:none}
+#vid{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+#cv{position:absolute;inset:0;width:100%;height:100%;touch-action:none}
+#camTop{position:absolute;top:0;left:0;right:0;padding:calc(8px + env(safe-area-inset-top)) 10px 0;display:flex;justify-content:space-between;gap:8px;pointer-events:none}
+#camTop button{pointer-events:auto}
+#camMsg{position:absolute;left:0;right:0;bottom:calc(24px + env(safe-area-inset-bottom));text-align:center;font-size:15px;text-shadow:0 1px 4px #000,0 0 8px #000;padding:0 14px;pointer-events:none}
+#toast{position:fixed;left:50%;top:38%;transform:translateX(-50%);z-index:1000;background:rgba(0,0,0,.8);padding:12px 18px;border-radius:14px;font-weight:700;display:none;text-align:center;max-width:86%}
+#loot{position:fixed;inset:0;z-index:1100;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.65);padding:20px}
+#loot .box{background:#16293a;border:2px solid #ffb300;border-radius:20px;padding:22px;text-align:center;max-width:340px;width:100%}
+#loot .big{font-size:56px;margin:0}
+#loot h2{margin:4px 0;font-size:26px;color:#ffd27a}
+#lootPrize{margin-top:12px;padding:10px;border-radius:12px;background:#1f4d2b;font-size:15px;display:none}
+#lootPrize b{display:block;font-size:24px;letter-spacing:3px;margin-top:4px;user-select:all}
+#dpad{position:fixed;left:12px;bottom:calc(92px + env(safe-area-inset-bottom));z-index:900;display:none;grid-template-columns:repeat(3,48px);grid-template-rows:repeat(3,48px);gap:4px}
+#dpad button{background:rgba(16,32,47,.85);border:1px solid rgba(255,255,255,.3);border-radius:12px;font-size:20px}
+#start{position:fixed;inset:0;z-index:2000;background:radial-gradient(#1c3b52,#0b1620);display:flex;align-items:center;justify-content:center;padding:20px;overflow:auto}
+.card{width:100%;max-width:420px;text-align:center}
+h1{margin:0 0 8px;font-size:clamp(30px,9vw,44px);color:#ffd27a}
+.sub{opacity:.85;margin:0 0 16px;line-height:1.4;font-size:15px}
+input{width:100%;padding:13px;border-radius:12px;border:2px solid #2f5470;background:#0f1d29;color:#fff;font:inherit;font-size:17px;margin-bottom:10px;text-align:center}
+.card .btn{margin-bottom:10px}
+.card .btn.go{animation:none}
+.note{font-size:12px;opacity:.7;line-height:1.4}
+</style>
+</head>
+<body>
+<div id="map"></div>
+<div id="hud">
+  <div class="chip"><small>ТОЧКИ</small><span id="pts">0</span></div>
+  <div class="chip"><small>СЪКРОВИЩА</small><span id="fnd">0</span></div>
+  <div class="chip" id="gps"><small>GPS</small><span id="gpsTxt">...</span></div>
+</div>
+<div class="side" style="bottom:calc(150px + env(safe-area-inset-bottom))">
+  <button class="round" id="bTop" title="Класация">🏆</button>
+  <button class="round" id="bMe" title="Къде съм">📍</button>
+</div>
+<div id="top5"></div>
+<div id="dpad">
+  <span></span><button data-d="f">▲</button><span></span>
+  <button data-d="l">◀</button><span></span><button data-d="r">▶</button>
+  <span></span><button data-d="b">▼</button><span></span>
+</div>
+<div id="bottom">
+  <div id="near">Търся сандъци наблизо...</div>
+  <button class="btn" id="bCam">📷 ОТВОРИ КАМЕРАТА</button>
+</div>
+
+<div id="cam">
+  <video id="vid" playsinline muted autoplay></video>
+  <canvas id="cv"></canvas>
+  <div id="camTop">
+    <button class="round" id="bBack">✕</button>
+    <div class="chip" id="camDist" style="text-align:center">...</div>
+    <div class="chip"><small>ТОЧКИ</small><span id="pts2">0</span></div>
+  </div>
+  <div id="camMsg"></div>
+</div>
+<div id="toast"></div>
+<div id="loot"><div class="box">
+  <p class="big" id="lootIco">📦</p><h2 id="lootT">Сандък!</h2>
+  <div id="lootPts" style="font-size:22px;font-weight:800"></div>
+  <div id="lootTot" class="note" style="margin-top:4px"></div>
+  <div id="lootPrize"></div>
+  <button class="btn go" id="lootOk" style="margin-top:14px">ПРОДЪЛЖИ</button>
+</div></div>
+
+<div id="start"><div class="card">
+  <h1>🗺️ ЛОВ НА СЪКРОВИЩА</h1>
+  <p class="sub">На картата има сандъци около теб. Ходи до тях, а когато си наблизо, включи камерата, намери сандъка във въздуха и го докосни, за да го отвориш!</p>
+  <input id="name" maxlength="14" placeholder="Твоето име" autocomplete="off">
+  <button class="btn go" id="bGps">▶ СТАРТ (с GPS)</button>
+  <button class="btn" id="bDemo">🎮 Демо режим (без GPS, ходиш с бутони)</button>
+  <p class="note">Нужни са достъп до местоположение, камера и сензори за движение. Играй навън и внимавай по улицата. В демо режим не се получава награда.</p>
+</div></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+(function(){
+'use strict';
+var $=function(id){return document.getElementById(id)};
+var D2R=Math.PI/180;
+var OPEN_M=25, CAM_RANGE=120;
+var ICON={wood:'📦',silver:'🧰',gold:'💰'};
+var NAMEBG={wood:'Дървен сандък',silver:'Сребърен сандък',gold:'Златен сандък'};
+var S={ws:null,pos:null,demo:false,chests:[],players:[],top:[],pts:0,found:0,cam:false,
+  hasPrize:false,prizeAt:5,follow:true,lastSend:0,lastSent:null,connected:false,
+  yaw:0,pitch:0,sensor:false,sensorAt:0,absSeen:false,compassDelta:0,deltaInit:false,
+  ori:null,basis:{f:[0,1,0],r:[1,0,0],u:[0,0,1]},hits:[],ghost:{},stream:null,pid:''};
+
+/* ---------- audio ---------- */
+var AC=null;
+function audio(){if(!AC){try{AC=new (window.AudioContext||window.webkitAudioContext)()}catch(e){}}if(AC&&AC.state==='suspended')AC.resume();return AC;}
+function tone(f,d,v,type,when,to){var a=audio();if(!a)return;var t=a.currentTime+(when||0);var o=a.createOscillator(),g=a.createGain();o.type=type||'sine';o.frequency.setValueAtTime(f,t);if(to)o.frequency.exponentialRampToValueAtTime(to,t+d);g.gain.setValueAtTime(v,t);g.gain.exponentialRampToValueAtTime(0.0001,t+d);o.connect(g);g.connect(a.destination);o.start(t);o.stop(t+d+0.02);}
+function sfxOpen(big){var n=big?[523,659,784,1047,1319]:[659,784,988];n.forEach(function(f,i){tone(f,0.25,0.18,'triangle',i*0.09)});}
+function sfxFail(){tone(150,0.3,0.25,'sawtooth',0,90);}
+function sfxNear(){tone(1000,0.08,0.1,'sine');}
+function vib(p){try{if(navigator.vibrate)navigator.vibrate(p)}catch(e){}}
+function toast(t,ms){var e=$('toast');e.textContent=t;e.style.display='block';clearTimeout(toast.t);toast.t=setTimeout(function(){e.style.display='none'},ms||1800);}
+
+/* ---------- geo helpers ---------- */
+function offs(a,b){ // meters (east,north) from a to b
+  return [(b.lon-a.lon)*111320*Math.cos(a.lat*D2R),(b.lat-a.lat)*110540];
+}
+function distTo(c){var o=offs(S.pos,c);return Math.hypot(o[0],o[1]);}
+
+/* ---------- map ---------- */
+var map=L.map('map',{zoomControl:false,attributionControl:true}).setView([42.6977,23.3219],17);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'&copy; OpenStreetMap'}).addTo(map);
+var meMarker=null,accCircle=null,openCircle=null,cM={},pM={};
+map.on('dragstart',function(){S.follow=false});
+function icon(c,near){return L.divIcon({className:'',html:'<div class="ch '+(c.k==='gold'?'gold ':'')+(near?'near':'')+'">'+ICON[c.k]+'</div>',iconSize:[30,30],iconAnchor:[15,15]});}
+function updateMap(){
+  if(!S.pos)return;
+  var ll=[S.pos.lat,S.pos.lon];
+  if(!meMarker){
+    meMarker=L.marker(ll,{icon:L.divIcon({className:'',html:'<div class="me"></div>',iconSize:[18,18],iconAnchor:[9,9]}),zIndexOffset:1000}).addTo(map);
+    accCircle=L.circle(ll,{radius:S.pos.acc||10,color:'#3b9bff',weight:1,fillOpacity:0.08}).addTo(map);
+    openCircle=L.circle(ll,{radius:OPEN_M,color:'#ffb300',weight:2,dashArray:'4 6',fill:false}).addTo(map);
+  }else{meMarker.setLatLng(ll);accCircle.setLatLng(ll).setRadius(S.pos.acc||10);openCircle.setLatLng(ll);}
+  if(S.follow)map.panTo(ll,{animate:true,duration:0.5});
+  var seen={};
+  S.chests.forEach(function(c){
+    seen[c.id]=1;var near=distTo(c)<=OPEN_M+10;
+    if(!cM[c.id]){cM[c.id]={m:L.marker([c.lat,c.lon],{icon:icon(c,near)}).addTo(map),near:near};}
+    else if(cM[c.id].near!==near){cM[c.id].m.setIcon(icon(c,near));cM[c.id].near=near;}
+  });
+  Object.keys(cM).forEach(function(id){if(!seen[id]){map.removeLayer(cM[id].m);delete cM[id];}});
+  var ps={};
+  S.players.forEach(function(p){
+    ps[p.id]=1;
+    var html='<div class="pl" style="background:'+p.c+'"></div><div class="pn">'+esc(p.name)+'</div>';
+    if(!pM[p.id]){pM[p.id]=L.marker([p.lat,p.lon],{icon:L.divIcon({className:'',html:html,iconSize:[14,14],iconAnchor:[7,7]})}).addTo(map);}
+    else pM[p.id].setLatLng([p.lat,p.lon]);
+  });
+  Object.keys(pM).forEach(function(id){if(!ps[id]){map.removeLayer(pM[id]);delete pM[id];}});
+}
+function esc(s){return String(s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
+
+/* ---------- HUD ---------- */
+var lastNear=0;
+function nearest(){
+  if(!S.pos)return null;var best=null,bd=1e9;
+  S.chests.forEach(function(c){var d=distTo(c);if(d<bd){bd=d;best=c;}});
+  return best?{c:best,d:bd}:null;
+}
+function updateHud(){
+  $('pts').textContent=S.pts;$('pts2').textContent=S.pts;$('fnd').textContent=S.found;
+  var n=nearest(),btn=$('bCam'),el=$('near');
+  if(!S.pos){el.textContent='Чакам GPS...';btn.className='btn';return;}
+  if(!n){el.textContent='Няма сандъци в радиус 400 м. Походи още!';btn.className='btn';return;}
+  var d=Math.round(n.d),o=offs(S.pos,n.c);
+  var br=Math.round((Math.atan2(o[0],o[1])/D2R+360)%360);
+  var dirs=['север','североизток','изток','югоизток','юг','югозапад','запад','северозапад'];
+  var dn=dirs[Math.round(br/45)%8];
+  el.innerHTML=ICON[n.c.k]+' Най-близък сандък: <b>'+d+' м</b> на '+dn;
+  if(n.d<=OPEN_M+15){btn.className='btn go';btn.textContent='📷 КАМЕРА: САНДЪК ТОЧНО ПРЕД ТЕБ!';}
+  else if(n.d<=60){btn.className='btn go';btn.textContent='📷 ОТВОРИ КАМЕРАТА (близо си!)';}
+  else{btn.className='btn';btn.textContent='📷 ОТВОРИ КАМЕРАТА';}
+  if(n.d<=OPEN_M+10&&Date.now()-lastNear>4000){lastNear=Date.now();sfxNear();vib(30);}
+  var t='<h3>🏆 Най-добри ловци</h3>';
+  S.top.forEach(function(p,i){t+='<div><span>'+(i+1)+'. '+esc(p.name)+'</span><span>'+p.points+' т. ('+p.found+')</span></div>';});
+  if(!S.top.length)t+='<div>Още няма резултати</div>';
+  if(S.hasPrize)t+='<div id="prize">🎟️ Събери '+S.prizeAt+' сандъка и получаваш код за отстъпка за билети!</div>';
+  $('top5').innerHTML=t;
+}
+$('bTop').onclick=function(){var e=$('top5');e.style.display=e.style.display==='block'?'none':'block';};
+$('bMe').onclick=function(){S.follow=true;if(S.pos)map.setView([S.pos.lat,S.pos.lon],17);};
+
+/* ---------- network ---------- */
+function getPid(){try{var p=localStorage.getItem('tpid');if(!p){p=Math.random().toString(36).slice(2,12)+Date.now().toString(36);localStorage.setItem('tpid',p);}return p;}catch(e){return Math.random().toString(36).slice(2,12);}}
+function connect(name){
+  S.pid=getPid();
+  var ws=new WebSocket((location.protocol==='https:'?'wss':'ws')+'://'+location.host);
+  S.ws=ws;
+  ws.onopen=function(){S.connected=true;ws.send(JSON.stringify({t:'t_join',pid:S.pid,name:name,demo:S.demo}));S.lastSent=null;sendPos(true);};
+  ws.onmessage=function(ev){var m;try{m=JSON.parse(ev.data)}catch(e){return}if(!m||typeof m.t!=='string'||m.t.indexOf('t_')!==0)return;onMsg(m);};
+  ws.onclose=function(){S.connected=false;toast('Връзката е прекъсната. Опитвам пак...',2500);setTimeout(function(){if(!S.connected)connect(name)},2500);};
+}
+function snd(o){if(S.ws&&S.ws.readyState===1)S.ws.send(JSON.stringify(o));}
+function sendPos(force){
+  if(!S.pos)return;var now=Date.now();
+  if(!force&&now-S.lastSend<2000)return;
+  S.lastSend=now;snd({t:'t_pos',lat:S.pos.lat,lon:S.pos.lon,acc:S.pos.acc||0});
+}
+setInterval(function(){sendPos(true)},3000);
+function onMsg(m){
+  if(m.t==='t_state'){
+    S.chests=m.chests||[];S.players=m.players||[];S.top=m.top||[];
+    S.pts=m.me.points;S.found=m.me.found;S.hasPrize=!!m.hasPrize;S.prizeAt=m.prizeAt||5;
+    updateMap();updateHud();
+  }else if(m.t==='t_loot'){
+    S.ghost[m.id]={t0:performance.now(),k:m.k,c:S.chests.filter(function(c){return c.id===m.id})[0]};
+    S.pts=m.total;S.found=m.found;showLoot(m);updateHud();
+  }else if(m.t==='t_fail'){
+    sfxFail();vib(120);
+    toast(m.reason==='far'?'Още си далеч ('+m.d+' м). Приближи се!':(m.reason==='taken'?'Този сандък вече е отворен.':'Опитай пак.'));
+  }else if(m.t==='t_error'){toast(m.msg||'Грешка',3000);}
+}
+function showLoot(m){
+  var big=m.k!=='wood';sfxOpen(big);vib([60,40,60,40,120]);
+  $('lootIco').textContent=ICON[m.k];$('lootT').textContent=NAMEBG[m.k]+'!';
+  $('lootPts').textContent='+'+m.pts+' точки';$('lootTot').textContent='Общо: '+m.total+' т. | Намерени: '+m.found;
+  var pz=$('lootPrize');
+  if(m.prize){pz.style.display='block';pz.innerHTML='🎟️ Твоят код за отстъпка за билети:<b>'+esc(m.prize)+'</b>';}
+  else if(S.hasPrize&&!S.demo){pz.style.display='block';pz.textContent='Още '+Math.max(0,S.prizeAt-m.found)+' сандъка до кода за отстъпка!';}
+  else pz.style.display='none';
+  $('loot').style.display='flex';
+}
+$('lootOk').onclick=function(){$('loot').style.display='none';};
+
+/* ---------- location ---------- */
+function setPos(lat,lon,acc){
+  S.pos={lat:lat,lon:lon,acc:acc};
+  $('gpsTxt').textContent=S.demo?'ДЕМО':('±'+Math.round(acc)+' м');
+  sendPos(false);updateMap();updateHud();
+}
+function startGps(){
+  if(!navigator.geolocation){toast('Няма GPS на това устройство. Пробвай демо режим.',3500);return;}
+  navigator.geolocation.watchPosition(function(p){setPos(p.coords.latitude,p.coords.longitude,p.coords.accuracy||15);},
+    function(e){if(e&&e.code===1){$('gpsTxt').textContent='няма';toast('Няма достъп до GPS. Разреши местоположението или избери демо режим.',4000);}else{$('gpsTxt').textContent='търся...';}},
+    {enableHighAccuracy:true,maximumAge:1000,timeout:20000});
+}
+function startDemo(){
+  S.demo=true;S.follow=true;$('dpad').style.display='grid';
+  setPos(42.6977,23.3219,5);map.setView([42.6977,23.3219],18);
+}
+function walk(dir){
+  if(!S.pos)return;
+  var yaw=S.cam?Math.atan2(S.basis.f[0],S.basis.f[1]):0; // radians from north
+  var a={f:0,r:Math.PI/2,b:Math.PI,l:-Math.PI/2}[dir]+yaw, step=4; // meters
+  var de=Math.sin(a)*step,dn=Math.cos(a)*step;
+  setPos(S.pos.lat+dn/110540,S.pos.lon+de/(111320*Math.cos(S.pos.lat*D2R)),5);
+}
+Array.prototype.forEach.call(document.querySelectorAll('#dpad button'),function(b){
+  var tmr=null;
+  function go(){walk(b.getAttribute('data-d'))}
+  b.addEventListener('pointerdown',function(e){e.preventDefault();go();tmr=setInterval(go,120);});
+  ['pointerup','pointerleave','pointercancel'].forEach(function(ev){b.addEventListener(ev,function(){clearInterval(tmr)})});
+});
+
+/* ---------- orientation sensors ---------- */
+function onOri(ev,absolute){
+  if(ev.alpha==null||ev.beta==null||ev.gamma==null)return;
+  if(absolute)S.absSeen=true;else if(S.absSeen&&ev.webkitCompassHeading===undefined)return;
+  var a=ev.alpha;
+  if(ev.webkitCompassHeading!==undefined&&ev.webkitCompassHeading!==null){ // iOS: align alpha to compass
+    var want=(360-ev.webkitCompassHeading+360)%360, dlt=((want-a+540)%360)-180;
+    if(!S.deltaInit||ev.beta>55&&ev.beta<125){S.compassDelta=S.deltaInit?(S.compassDelta+((dlt-S.compassDelta+540)%360-180)*0.1):dlt;S.deltaInit=true;}
+    a=a+S.compassDelta;
+  }
+  S.ori={a:a,b:ev.beta,g:ev.gamma};S.sensor=true;S.sensorAt=performance.now();
+}
+function startSensors(){
+  window.addEventListener('deviceorientationabsolute',function(e){onOri(e,true)},true);
+  window.addEventListener('deviceorientation',function(e){onOri(e,false)},true);
+}
+function basisFromOri(o){
+  var cA=Math.cos(o.a*D2R),sA=Math.sin(o.a*D2R),cB=Math.cos(o.b*D2R),sB=Math.sin(o.b*D2R),cG=Math.cos(o.g*D2R),sG=Math.sin(o.g*D2R);
+  return {
+    f:[-(cA*sG+sA*sB*cG),-(sA*sG-cA*sB*cG),-(cB*cG)],
+    r:[cA*cG-sA*sB*sG,sA*cG+cA*sB*sG,-cB*sG],
+    u:[-sA*cB,cA*cB,sB]
+  };
+}
+function basisFromManual(){
+  var y=S.yaw,p=S.pitch,cy=Math.cos(y),sy=Math.sin(y),cp=Math.cos(p),sp=Math.sin(p);
+  return {f:[sy*cp,cy*cp,sp],r:[cy,-sy,0],u:[-sy*sp,-cy*sp,cp]};
+}
+function norm(v){var l=Math.hypot(v[0],v[1],v[2])||1;return [v[0]/l,v[1]/l,v[2]/l];}
+function updateBasis(){
+  var nb=(S.sensor&&performance.now()-S.sensorAt<1500)?basisFromOri(S.ori):basisFromManual();
+  var k=0.3,b=S.basis;
+  ['f','r','u'].forEach(function(n){b[n]=norm([b[n][0]+(nb[n][0]-b[n][0])*k,b[n][1]+(nb[n][1]-b[n][1])*k,b[n][2]+(nb[n][2]-b[n][2])*k]);});
+}
+function dot(a,b){return a[0]*b[0]+a[1]*b[1]+a[2]*b[2];}
+
+/* ---------- camera (AR) ---------- */
+var cv=$('cv'),cx=cv.getContext('2d'),W=0,H=0,dpr=1;
+function resizeCv(){dpr=window.devicePixelRatio||1;W=window.innerWidth;H=window.innerHeight;cv.width=W*dpr;cv.height=H*dpr;cx.setTransform(dpr,0,0,dpr,0,0);}
+window.addEventListener('resize',function(){if(S.cam)resizeCv()});
+function openCam(){
+  if(!S.pos){toast('Чакам GPS...');return;}
+  S.cam=true;$('cam').style.display='block';resizeCv();S.sensorAt=S.sensor?S.sensorAt:0;
+  if(navigator.mediaDevices&&navigator.mediaDevices.getUserMedia){
+    navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'}},audio:false}).then(function(st){
+      S.stream=st;$('vid').srcObject=st;var p=$('vid').play();if(p&&p.catch)p.catch(function(){});
+    }).catch(function(){$('camMsg').textContent='Няма достъп до камерата. Виждаш само сандъците.';});
+  }
+  $('camMsg').textContent=S.sensor?'Огледай се с телефона. Докосни сандъка, за да го отвориш!':'Влачи с пръст, за да се огледаш. Докосни сандъка!';
+  requestAnimationFrame(frame);
+}
+function closeCam(){
+  S.cam=false;$('cam').style.display='none';
+  if(S.stream){S.stream.getTracks().forEach(function(t){t.stop()});S.stream=null;}
+  $('vid').srcObject=null;
+}
+$('bCam').onclick=function(){audio();openCam();};
+$('bBack').onclick=closeCam;
+
+var FOV=62*D2R;
+function project(c){
+  var o=offs(S.pos,c),dh=-0.5; // chest floats ~1m above ground, phone at ~1.5m
+  var d=[o[0],o[1],dh],B=S.basis;
+  var zc=dot(d,B.f),xc=dot(d,B.r),yc=dot(d,B.u);
+  return {xc:xc,yc:yc,zc:zc,dist:Math.hypot(o[0],o[1])};
+}
+var COL={wood:['#8a5a2b','#c68a4a','#ffd9a0'],silver:['#7d8794','#c8d1dc','#ffffff'],gold:['#b8860b','#ffd23b','#fff3b0']};
+function drawChest(x,y,s,k,open,t,glow){
+  var c=COL[k];
+  cx.save();cx.translate(x,y);
+  var g=cx.createRadialGradient(0,0,s*0.1,0,0,s*1.6);
+  g.addColorStop(0,'rgba(255,230,140,'+(glow?0.6:0.3)+')');g.addColorStop(1,'rgba(255,230,140,0)');
+  cx.fillStyle=g;cx.beginPath();cx.arc(0,0,s*1.6,0,7);cx.fill();
+  var w=s,h=s*0.62;
+  cx.fillStyle=c[0];cx.fillRect(-w/2,-h*0.1,w,h*0.7);          // body
+  cx.fillStyle=c[1];cx.fillRect(-w/2,-h*0.1,w,h*0.18);
+  cx.fillStyle=c[2];cx.fillRect(-w*0.08,h*0.05,w*0.16,h*0.22); // lock
+  cx.strokeStyle='rgba(0,0,0,.55)';cx.lineWidth=Math.max(1,s*0.04);cx.strokeRect(-w/2,-h*0.1,w,h*0.7);
+  cx.save();cx.translate(0,-h*0.1);                              // lid
+  if(open){cx.translate(-w/2,0);cx.rotate(-Math.min(1.9,open*2.2));cx.translate(w/2,0);}
+  cx.fillStyle=c[1];cx.beginPath();cx.moveTo(-w/2,0);cx.quadraticCurveTo(0,-h*0.75,w/2,0);cx.closePath();cx.fill();
+  cx.stroke();cx.restore();
+  if(open){ // light rays + coins
+    cx.globalAlpha=Math.max(0,1-open*0.6);cx.fillStyle='#fff6c0';
+    for(var i=0;i<9;i++){var a=-Math.PI/2+(i-4)*0.28,l=s*(0.8+open*1.6);cx.beginPath();cx.moveTo(0,-h*0.1);cx.lineTo(Math.cos(a-0.05)*l,-h*0.1+Math.sin(a-0.05)*l);cx.lineTo(Math.cos(a+0.05)*l,-h*0.1+Math.sin(a+0.05)*l);cx.fill();}
+    cx.globalAlpha=1;cx.fillStyle='#ffd23b';
+    for(var j=0;j<8;j++){var cy=-h*0.1-open*s*(0.6+((j*37)%10)/10)+0,cxx=(((j*53)%100)/100-0.5)*s*1.2;cx.beginPath();cx.arc(cxx,cy,Math.max(2,s*0.06),0,7);cx.fill();}
+  }
+  cx.restore();
+}
+function frame(t){
+  if(!S.cam)return;requestAnimationFrame(frame);
+  updateBasis();
+  cx.clearRect(0,0,W,H);
+  var f=H/(2*Math.tan(FOV/2)),hits=[],list=S.chests.slice();
+  Object.keys(S.ghost).forEach(function(id){var g=S.ghost[id];if(performance.now()-g.t0>1800||!g.c){delete S.ghost[id];return;}if(!list.some(function(c){return c.id===id}))list.push(g.c);});
+  var nearest=null,nd=1e9;
+  list.forEach(function(c){
+    var p=project(c);if(p.dist>CAM_RANGE)return;
+    var gh=S.ghost[c.id],open=gh?Math.min(1,(performance.now()-gh.t0)/700):0;
+    if(p.dist<nd&&!gh){nd=p.dist;nearest=c;}
+    if(p.zc>0.5){
+      var sx=W/2+f*p.xc/p.zc,sy=H/2-f*p.yc/p.zc;
+      var size=Math.max(34,Math.min(W*0.7,f*0.9/Math.max(p.dist,1.5)));
+      var bob=Math.sin(t/400+p.dist)*size*0.05;
+      if(sx>-size&&sx<W+size&&sy>-size&&sy<H+size){
+        var near=p.dist<=OPEN_M;
+        // beam
+        var bg=cx.createLinearGradient(0,sy-size*3,0,sy);bg.addColorStop(0,'rgba(255,220,100,0)');bg.addColorStop(1,'rgba(255,220,100,'+(near?0.45:0.25)+')');
+        cx.fillStyle=bg;cx.fillRect(sx-size*0.12,sy-size*3,size*0.24,size*3);
+        drawChest(sx,sy+bob,size,c.k,open,t,near);
+        cx.fillStyle='#fff';cx.font='bold 14px system-ui';cx.textAlign='center';cx.shadowColor='#000';cx.shadowBlur=4;
+        cx.fillText(Math.round(p.dist)+' м'+(near?'':''),sx,sy+size*0.62+16+bob);cx.shadowBlur=0;
+        if(!gh)hits.push({id:c.id,x:sx,y:sy+bob,r:Math.max(size*0.8,44),d:p.dist});
+      }
+    }else if(!gh){ // off-screen arrow
+      var ang=Math.atan2(-p.yc,p.xc);
+      if(p.zc<=0.5&&Math.abs(p.xc)<0.01&&Math.abs(p.yc)<0.01)ang=Math.PI/2;
+    }
+    if(!gh&&p.dist<=60&&(p.zc<=0.5||Math.abs(f*p.xc/p.zc)>W/2||Math.abs(f*p.yc/p.zc)>H/2)){
+      var an=Math.atan2(-p.yc,p.xc),ex=W/2+Math.cos(an)*(Math.min(W,H)/2-34),ey=H/2+Math.sin(an)*(Math.min(W,H)/2-34);
+      cx.save();cx.translate(ex,ey);cx.rotate(an);cx.fillStyle='rgba(255,200,0,.9)';cx.beginPath();cx.moveTo(18,0);cx.lineTo(-10,-13);cx.lineTo(-10,13);cx.closePath();cx.fill();cx.restore();
+      cx.fillStyle='#fff';cx.font='bold 12px system-ui';cx.textAlign='center';cx.fillText(Math.round(p.dist)+' м',ex,ey+(ey>H/2?-22:30));
+    }
+  });
+  S.hits=hits;
+  drawRadar();
+  $('camDist').innerHTML=nearest?(ICON[nearest.k]+' '+Math.round(nd)+' м'+(nd<=OPEN_M?' ✓ можеш да отвориш':'')):'Няма сандък наблизо';
+}
+function drawRadar(){
+  var R=54,x=W-R-12,y=H-R-70-(window.visualViewport?0:0);
+  cx.save();cx.translate(x,y);
+  cx.fillStyle='rgba(10,25,40,.7)';cx.beginPath();cx.arc(0,0,R,0,7);cx.fill();
+  cx.strokeStyle='rgba(255,255,255,.35)';cx.lineWidth=1;cx.beginPath();cx.arc(0,0,R,0,7);cx.stroke();cx.beginPath();cx.arc(0,0,R/2,0,7);cx.stroke();
+  var yaw=Math.atan2(S.basis.f[0],S.basis.f[1]);
+  S.chests.forEach(function(c){
+    var o=offs(S.pos,c),d=Math.hypot(o[0],o[1]);if(d>CAM_RANGE)return;
+    var th=Math.atan2(o[0],o[1])-yaw,r=d/CAM_RANGE*R;
+    cx.fillStyle=c.k==='gold'?'#ffd23b':(c.k==='silver'?'#dfe6ee':'#ff9a3c');
+    cx.beginPath();cx.arc(Math.sin(th)*r,-Math.cos(th)*r,3.5,0,7);cx.fill();
+  });
+  S.players.forEach(function(p){
+    var o=offs(S.pos,p),d=Math.hypot(o[0],o[1]);if(d>CAM_RANGE)return;
+    var th=Math.atan2(o[0],o[1])-yaw,r=d/CAM_RANGE*R;
+    cx.fillStyle=p.c;cx.beginPath();cx.arc(Math.sin(th)*r,-Math.cos(th)*r,3,0,7);cx.fill();
+  });
+  cx.fillStyle='#3b9bff';cx.beginPath();cx.moveTo(0,-8);cx.lineTo(5,5);cx.lineTo(-5,5);cx.closePath();cx.fill();
+  cx.restore();
+}
+/* tap to open + drag to look (manual mode) */
+var drag=null;
+cv.addEventListener('pointerdown',function(e){drag={x:e.clientX,y:e.clientY,moved:0,px:e.clientX,py:e.clientY};cv.setPointerCapture(e.pointerId);});
+cv.addEventListener('pointermove',function(e){
+  if(!drag)return;
+  var dx=e.clientX-drag.px,dy=e.clientY-drag.py;drag.px=e.clientX;drag.py=e.clientY;drag.moved+=Math.abs(dx)+Math.abs(dy);
+  if(!(S.sensor&&performance.now()-S.sensorAt<1500)){S.yaw-=dx*0.006;S.pitch=Math.max(-1.4,Math.min(1.4,S.pitch+dy*0.006));}
+});
+cv.addEventListener('pointerup',function(e){
+  if(!drag)return;var moved=drag.moved;drag=null;
+  if(moved>12)return;
+  var best=null,bd=1e9;
+  S.hits.forEach(function(h){var dd=Math.hypot(e.clientX-h.x,e.clientY-h.y);if(dd<=h.r&&dd<bd){bd=dd;best=h;}});
+  if(!best){return;}
+  if(best.d>OPEN_M){sfxFail();toast('Приближи се още! Сандъкът е на '+Math.round(best.d)+' м (трябват ≤ '+OPEN_M+' м).');return;}
+  snd({t:'t_open',id:best.id});
+});
+
+/* ---------- start ---------- */
+function begin(demo){
+  audio();
+  var n=$('name').value.replace(/[<>&"']/g,'').trim().slice(0,14)||'Ловец';
+  try{localStorage.setItem('tname',n)}catch(e){}
+  S.demo=demo;
+  var go=function(){
+    $('start').style.display='none';
+    startSensors();
+    if(demo)startDemo();else startGps();
+    connect(n);
+  };
+  if(typeof DeviceOrientationEvent!=='undefined'&&typeof DeviceOrientationEvent.requestPermission==='function'){
+    DeviceOrientationEvent.requestPermission().then(function(){go()}).catch(function(){go()});
+  }else go();
+}
+$('bGps').onclick=function(){begin(false)};
+$('bDemo').onclick=function(){begin(true)};
+try{var sv=localStorage.getItem('tname');if(sv)$('name').value=sv;}catch(e){}
+})();
+</script>
+</body>
+</html>
