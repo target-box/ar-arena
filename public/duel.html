@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="bg">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="theme-color" content="#2a1208">
+<title>Дуел на Дивия запад</title>
+<style>
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;user-select:none;-webkit-user-select:none}
+html,body{margin:0;height:100%;overflow:hidden;background:#2a1208;color:#fff;font-family:Georgia,'Times New Roman',serif;touch-action:manipulation}
+#scene{position:fixed;inset:0;background:linear-gradient(#ffb347 0%,#ff7a3c 38%,#c2410c 62%,#5a2410 62.1%,#3b1608 100%);overflow:hidden}
+#sun{position:absolute;left:50%;top:22%;width:34vmin;height:34vmin;margin-left:-17vmin;border-radius:50%;background:#ffe08a;box-shadow:0 0 80px 30px rgba(255,224,138,.45)}
+#mesa{position:absolute;left:0;right:0;top:46%;height:16%;background:#7a2f12;clip-path:polygon(0 100%,0 40%,8% 40%,12% 10%,24% 10%,28% 40%,60% 40%,64% 22%,76% 22%,80% 40%,100% 40%,100% 100%)}
+#flash{position:absolute;inset:0;background:#fff;opacity:0;pointer-events:none}
+#hud{position:absolute;top:0;left:0;right:0;padding:calc(10px + env(safe-area-inset-top)) 14px 0;text-align:center;z-index:3;pointer-events:none}
+#score{font-size:clamp(20px,6vw,34px);font-weight:700;letter-spacing:2px;text-shadow:0 2px 0 #000}
+#score small{display:block;font-size:12px;letter-spacing:3px;opacity:.85;font-weight:400}
+#names{display:flex;justify-content:space-between;font-size:13px;opacity:.9;margin-top:4px;text-shadow:0 1px 0 #000}
+#msg{position:absolute;left:0;right:0;top:34%;text-align:center;font-size:clamp(22px,7vw,40px);font-weight:700;text-shadow:0 3px 0 #000;z-index:3;padding:0 16px;pointer-events:none;min-height:1.2em}
+#msg.draw{font-size:clamp(54px,18vw,120px);color:#ff2a2a;animation:pop .18s ease-out;text-shadow:0 0 24px #fff,0 5px 0 #000}
+#msg small{display:block;font-size:.45em;font-weight:400;margin-top:6px}
+@keyframes pop{from{transform:scale(.4)}to{transform:scale(1)}}
+#stage{position:absolute;left:0;right:0;bottom:5%;height:42%;display:flex;justify-content:space-between;padding:0 4vw}
+.cw{height:100%;width:42vw;max-width:260px;display:flex;align-items:flex-end}
+.cw.opp{transform:scaleX(-1)}
+.cw svg{height:100%;width:100%;transform-origin:50% 96%;transition:transform .7s cubic-bezier(.3,.7,.4,1)}
+.cw.fall svg{transform:translateX(85%) rotate(-82deg)}
+.flash{opacity:0}
+.cw.shoot .flash{opacity:1}
+#hint{position:absolute;left:0;right:0;bottom:calc(10px + env(safe-area-inset-bottom));text-align:center;font-size:13px;opacity:.8;z-index:3;pointer-events:none}
+.ov{position:fixed;inset:0;z-index:10;display:none;align-items:center;justify-content:center;background:rgba(30,10,4,.82);padding:20px}
+.ov.on{display:flex}
+.card{width:100%;max-width:420px;text-align:center}
+h1{margin:0 0 6px;font-size:clamp(30px,9vw,46px);letter-spacing:3px;text-shadow:0 3px 0 #000;color:#ffd27a}
+.sub{opacity:.85;margin:0 0 18px;font-size:15px;line-height:1.35}
+input,select{width:100%;padding:13px;border-radius:10px;border:2px solid #8a4a1f;background:#2a1208;color:#fff;font:inherit;font-size:17px;margin-bottom:10px;text-align:center}
+button{width:100%;padding:15px;border:0;border-radius:12px;font:inherit;font-weight:700;font-size:18px;letter-spacing:1px;margin-bottom:10px;color:#fff;background:#c2410c;box-shadow:0 4px 0 #6b2108}
+button:active{transform:translateY(3px);box-shadow:0 1px 0 #6b2108}
+button.alt{background:#3b6b2f;box-shadow:0 4px 0 #1e3a17}
+button.dim{background:#555;box-shadow:0 4px 0 #333}
+.row{display:flex;gap:8px}.row>*{flex:1}
+#code{text-transform:uppercase;letter-spacing:4px}
+.big{font-size:clamp(34px,10vw,52px);font-weight:700;margin:6px 0 14px}
+.times{display:flex;justify-content:center;gap:24px;margin:0 0 14px;font-size:18px}
+</style>
+</head>
+<body>
+<div id="scene">
+  <div id="sun"></div><div id="mesa"></div>
+  <div id="hud">
+    <div id="score">0 : 0<small id="rnd">РУНД 1</small></div>
+    <div id="names"><span id="nYou">ТИ</span><span id="nOpp">ПРОТИВНИК</span></div>
+  </div>
+  <div id="msg"></div>
+  <div id="stage"><div class="cw you" id="cwYou"></div><div class="cw opp" id="cwOpp"></div></div>
+  <div id="hint"></div>
+  <div id="flash"></div>
+</div>
+
+<div class="ov on" id="menu"><div class="card">
+  <h1>ДУЕЛ</h1>
+  <p class="sub">Двама каубои, един сигнал. Изчакай „СТРЕЛЯЙ!" и докосни екрана първи.<br>Докоснеш ли рано &ndash; губиш рунда. До 2 победи.</p>
+  <input id="name" maxlength="14" placeholder="Твоето име" autocomplete="off">
+  <select id="lvl"><option value="0">Бот: лесен</option><option value="1" selected>Бот: среден</option><option value="2">Бот: труден</option></select>
+  <button id="bBot">СРЕЩУ КОМПЮТЪР</button>
+  <button class="alt" id="bRand">ОНЛАЙН СРЕЩУ СЛУЧАЕН ИГРАЧ</button>
+  <div class="row"><input id="code" maxlength="6" placeholder="КОД"><button class="alt" id="bCode" style="margin-top:0">ВЛЕЗ</button></div>
+  <p class="sub" style="font-size:13px;margin:0">С приятел: и двамата въведете един и същ код.</p>
+</div></div>
+
+<div class="ov" id="wait"><div class="card">
+  <h1>ЧАКАМ...</h1>
+  <p class="sub" id="waitTxt">Търся противник</p>
+  <div class="big" id="waitCode"></div>
+  <button class="dim" id="bCancel">ОТКАЗ</button>
+</div></div>
+
+<div class="ov" id="end"><div class="card">
+  <h1 id="endT">ПОБЕДА</h1>
+  <div class="big" id="endS">2 : 0</div>
+  <button id="bAgain">РЕВАНШ</button>
+  <button class="dim" id="bMenu">МЕНЮ</button>
+</div></div>
+
+<script>
+(function(){
+'use strict';
+var $=function(id){return document.getElementById(id)};
+
+/* ---------- audio ---------- */
+var AC=null;
+function audio(){
+  if(!AC){try{AC=new (window.AudioContext||window.webkitAudioContext)();}catch(e){}}
+  if(AC&&AC.state==='suspended')AC.resume();
+  return AC;
+}
+function tone(f,d,v,type,when,to){
+  var a=audio();if(!a)return;var t=a.currentTime+(when||0);
+  var o=a.createOscillator(),g=a.createGain();
+  o.type=type||'sine';o.frequency.setValueAtTime(f,t);
+  if(to)o.frequency.exponentialRampToValueAtTime(to,t+d);
+  g.gain.setValueAtTime(v,t);g.gain.exponentialRampToValueAtTime(0.0001,t+d);
+  o.connect(g);g.connect(a.destination);o.start(t);o.stop(t+d+0.02);
+}
+function noise(d,v,fc,when){
+  var a=audio();if(!a)return;var t=a.currentTime+(when||0);
+  var n=Math.floor(a.sampleRate*d),b=a.createBuffer(1,n,a.sampleRate),x=b.getChannelData(0);
+  for(var i=0;i<n;i++)x[i]=(Math.random()*2-1)*Math.pow(1-i/n,2);
+  var s=a.createBufferSource();s.buffer=b;
+  var f=a.createBiquadFilter();f.type='lowpass';f.frequency.value=fc;
+  var g=a.createGain();g.gain.value=v;
+  s.connect(f);f.connect(g);g.connect(a.destination);s.start(t);
+}
+function sfxShot(){noise(0.05,0.9,9000);tone(180,0.18,0.7,'sine',0,45);noise(0.45,0.35,1400,0.02);}
+function sfxDraw(){tone(880,0.12,0.22,'square');tone(1320,0.2,0.22,'square',0.1);}
+function sfxFoul(){tone(120,0.45,0.3,'sawtooth',0,70);}
+function sfxReady(){tone(80,0.2,0.5,'sine',0,50);tone(80,0.2,0.4,'sine',0.35,50);}
+function sfxWin(){tone(523,0.14,0.2,'triangle');tone(659,0.14,0.2,'triangle',0.14);tone(784,0.3,0.22,'triangle',0.28);}
+function sfxLose(){tone(330,0.25,0.2,'triangle');tone(247,0.45,0.2,'triangle',0.22);}
+function vib(p){try{if(navigator.vibrate)navigator.vibrate(p)}catch(e){}}
+
+/* ---------- cowboys ---------- */
+function cowboyMarkup(shirt){
+  return '<svg viewBox="0 0 200 280" xmlns="http://www.w3.org/2000/svg">'+
+  '<rect x="82" y="190" width="15" height="84" rx="4" fill="#2a1a12"/><rect x="103" y="190" width="15" height="84" rx="4" fill="#2a1a12"/>'+
+  '<rect x="78" y="268" width="22" height="9" rx="3" fill="#120a06"/><rect x="100" y="268" width="22" height="9" rx="3" fill="#120a06"/>'+
+  '<rect x="76" y="104" width="48" height="92" rx="9" fill="'+shirt+'"/>'+
+  '<rect x="76" y="176" width="48" height="9" fill="#3a2418"/><rect x="95" y="174" width="10" height="13" rx="2" fill="#d9a441"/>'+
+  '<rect x="86" y="100" width="28" height="9" rx="3" fill="#b3261e"/>'+
+  '<circle cx="100" cy="86" r="16" fill="#e0b48f"/>'+
+  '<ellipse cx="100" cy="74" rx="36" ry="7" fill="#2b1a10"/><rect x="83" y="48" width="34" height="27" rx="7" fill="#3a2418"/><rect x="83" y="64" width="34" height="5" fill="#d9a441"/>'+
+  '<g class="arm" transform="rotate(75 100 112)">'+
+    '<line x1="100" y1="112" x2="146" y2="112" stroke="'+shirt+'" stroke-width="13" stroke-linecap="round"/>'+
+    '<circle cx="148" cy="112" r="7" fill="#e0b48f"/>'+
+    '<rect x="146" y="105" width="34" height="9" rx="2" fill="#222"/><rect x="146" y="112" width="9" height="14" rx="2" fill="#4a2e1a"/>'+
+    '<polygon class="flash" points="180,109 205,96 196,109 205,122" fill="#ffd23b"/>'+
+  '</g></svg>';
+}
+var cwYou=$('cwYou'),cwOpp=$('cwOpp');
+cwYou.innerHTML=cowboyMarkup('#2f5d8a');cwOpp.innerHTML=cowboyMarkup('#8a2f2f');
+function setArm(el,up){
+  el.querySelector('.arm').setAttribute('transform',up?'rotate(0 100 112)':'rotate(75 100 112)');
+}
+function resetCowboys(){
+  [cwYou,cwOpp].forEach(function(c){c.classList.remove('fall','shoot');setArm(c,false);});
+}
+function shoot(c){setArm(c,true);c.classList.add('shoot');setTimeout(function(){c.classList.remove('shoot')},140);}
+
+/* ---------- UI helpers ---------- */
+var msg=$('msg'),hint=$('hint');
+function setMsg(html,cls){msg.className=cls||'';msg.innerHTML=html;}
+function setScore(s,round){$('score').firstChild.nodeValue=s[0]+' : '+s[1];if(round!==null)$('rnd').textContent=round?('РУНД '+round):'';}
+function show(id){['menu','wait','end'].forEach(function(x){$(x).classList.toggle('on',x===id)});}
+function flash(color){var f=$('flash');f.style.background=color||'#fff';f.style.transition='none';f.style.opacity='.85';setTimeout(function(){f.style.transition='opacity .35s';f.style.opacity='0';},30);}
+
+/* ---------- game state / message handler ---------- */
+var phase='idle',tapped=false,drawAt=0,engine=null,myName='ТИ';
+function handle(m){
+  switch(m.t){
+  case 'd_wait':
+    show('wait');
+    $('waitTxt').textContent=m.room?'Дай този код на приятел:':'Търся противник...';
+    $('waitCode').textContent=m.room||'';
+    break;
+  case 'd_start':
+    show(null);resetCowboys();
+    $('nYou').textContent=myName;$('nOpp').textContent=m.opp;
+    setScore([0,0],0);setMsg('Противник: '+esc(m.opp));hint.textContent='';
+    break;
+  case 'd_ready':
+    phase='ready';tapped=false;resetCowboys();
+    setScore(m.score,m.round);
+    setMsg('Приготви се...<small>Не докосвай, докато не видиш СТРЕЛЯЙ!</small>');
+    hint.textContent='Докосни екрана при сигнала';
+    sfxReady();
+    break;
+  case 'd_draw':
+    phase='draw';
+    setMsg('СТРЕЛЯЙ!','draw');
+    drawAt=performance.now();
+    flash('#fff');sfxDraw();vib(40);
+    break;
+  case 'd_result':
+    phase='done';
+    setScore(m.score,null);
+    result(m);
+    break;
+  case 'd_over':
+    phase='over';
+    setTimeout(function(){
+      $('endT').textContent=m.winner==='you'?'ПОБЕДА!':'ЗАГУБА';
+      $('endS').textContent=m.score[0]+' : '+m.score[1];
+      show('end');
+      (m.winner==='you'?sfxWin:sfxLose)();
+    },300);
+    break;
+  case 'd_opp_left':
+    phase='idle';setMsg('Противникът напусна.');
+    $('waitTxt').textContent='Противникът напусна. Чакам нов...';
+    show('wait');
+    break;
+  case 'd_error':
+    alert(m.msg||'Грешка');goMenu();
+    break;
+  }
+}
+function esc(s){return String(s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
+function result(m){
+  var t='',you=m.you,opp=m.opp;
+  if(m.winner==='you'){
+    shoot(cwYou);sfxShot();cwOpp.classList.add('fall');vib([60,40,60]);
+    if(m.reason==='foul'){t='Противникът стреля рано!<small>Рундът е твой</small>';}
+    else{t='Ти беше по-бърз!<small>'+tm(you,opp)+'</small>';}
+  }else if(m.winner==='opp'){
+    shoot(cwOpp);sfxShot();cwYou.classList.add('fall');vib(200);
+    if(m.reason==='foul'){t='Стреля прекалено рано!<small>Рундът е на противника</small>';sfxFoul();}
+    else{t='Противникът беше по-бърз.<small>'+tm(you,opp)+'</small>';}
+  }else{
+    t=m.reason==='foul'?'И двамата стреляте рано. Равен рунд.':(m.reason==='timeout'?'Никой не стреля.':'Точно равни! Равен рунд.');
+    sfxFoul();
+  }
+  setMsg(t);hint.textContent='';
+}
+function tm(you,opp){
+  return 'Ти: '+(you==null?'-':you+' мс')+' &nbsp;|&nbsp; Той: '+(opp==null?'-':opp+' мс');
+}
+
+/* ---------- input ---------- */
+$('scene').addEventListener('pointerdown',function(e){
+  if(!engine||tapped)return;
+  if(phase!=='ready'&&phase!=='draw')return;
+  tapped=true;audio();
+  if(phase==='draw'){sfxShot();shoot(cwYou);vib(25);}
+  else{sfxFoul();}
+  engine.tap();
+});
+
+/* ---------- local (bot) engine ---------- */
+function LocalEngine(level){
+  var timers=[],score=[0,0],round=0,ph='idle',dAt=0,botT=0,done=false;
+  var R=[[450,800],[300,540],[210,350]][level];
+  function later(f,ms){timers.push(setTimeout(f,ms))}
+  function emit(m){setTimeout(function(){handle(m)},0)}
+  function next(){
+    round++;ph='ready';done=false;
+    emit({t:'d_ready',round:round,score:score.slice()});
+    later(function(){
+      ph='wait';
+      later(function(){
+        ph='draw';dAt=performance.now();
+        botT=Math.round(R[0]+Math.random()*(R[1]-R[0]));
+        emit({t:'d_draw'});
+        later(function(){fin('opp',null,botT)},botT);
+      },2000+Math.random()*3500);
+    },1500);
+  }
+  function fin(w,you,opp,foul){
+    if(done)return;done=true;
+    timers.forEach(clearTimeout);timers=[];
+    if(w==='you')score[0]++;else if(w==='opp')score[1]++;
+    emit({t:'d_result',reason:foul?'foul':'fast',winner:w,you:you,opp:opp,score:score.slice()});
+    if(score[0]>=2||score[1]>=2){
+      later(function(){emit({t:'d_over',winner:score[0]>score[1]?'you':'opp',score:score.slice()})},2200);
+    }else later(next,3200);
+  }
+  return {
+    start:function(){emit({t:'d_start',opp:'Бандитът'});later(next,700);},
+    tap:function(){
+      if(ph==='ready'||ph==='wait'){ph='x';fin('opp',null,null,true);}
+      else if(ph==='draw'){
+        var rt=Math.round(performance.now()-dAt);
+        ph='x';
+        if(rt<botT)fin('you',rt,botT);else fin('opp',rt,botT);
+      }
+    },
+    rematch:function(){score=[0,0];round=0;emit({t:'d_start',opp:'Бандитът'});later(next,700);},
+    close:function(){timers.forEach(clearTimeout);timers=[];}
+  };
+}
+
+/* ---------- online engine ---------- */
+function OnlineEngine(room){
+  var ws=null,closed=false;
+  function open(){
+    var url=(location.protocol==='https:'?'wss':'ws')+'://'+location.host;
+    try{ws=new WebSocket(url);}catch(e){handle({t:'d_error',msg:'Няма връзка'});return;}
+    ws.onopen=function(){ws.send(JSON.stringify({t:'d_join',room:room,name:myName}));};
+    ws.onmessage=function(ev){var m;try{m=JSON.parse(ev.data)}catch(e){return}if(m&&typeof m.t==='string'&&m.t.indexOf('d_')===0)handle(m);};
+    ws.onclose=function(){if(!closed){closed=true;if(phase!=='over'){handle({t:'d_error',msg:'Връзката е прекъсната'});}}};
+    ws.onerror=function(){};
+  }
+  function snd(o){if(ws&&ws.readyState===1)ws.send(JSON.stringify(o));}
+  open();
+  return {
+    start:function(){},
+    tap:function(){snd({t:'d_tap'});},
+    rematch:function(){snd({t:'d_rematch'});$('endT').textContent='Чакам противника...';},
+    close:function(){closed=true;try{ws&&ws.close()}catch(e){}}
+  };
+}
+
+/* ---------- menu wiring ---------- */
+function getName(){
+  var n=$('name').value.replace(/[<>&"']/g,'').trim().slice(0,14)||'Каубой';
+  try{localStorage.setItem('duelName',n)}catch(e){}
+  myName=n;return n;
+}
+function goMenu(){
+  if(engine){engine.close();engine=null;}
+  phase='idle';resetCowboys();setMsg('');hint.textContent='';setScore([0,0],0);show('menu');
+}
+$('bBot').onclick=function(){
+  audio();getName();engine=LocalEngine(parseInt($('lvl').value,10));engine.start();
+};
+$('bRand').onclick=function(){audio();getName();engine=OnlineEngine('');};
+$('bCode').onclick=function(){
+  var c=$('code').value.replace(/[^A-Za-z0-9]/g,'').toUpperCase();
+  if(c.length<2){$('code').focus();return;}
+  audio();getName();engine=OnlineEngine(c);
+};
+$('bCancel').onclick=goMenu;
+$('bMenu').onclick=goMenu;
+$('bAgain').onclick=function(){
+  if(!engine)return;
+  if(engine.rematch){
+    show(null);resetCowboys();setMsg('Чакам реванш...');
+    engine.rematch();
+  }
+};
+try{var sv=localStorage.getItem('duelName');if(sv)$('name').value=sv;}catch(e){}
+})();
+</script>
+</body>
+</html>
